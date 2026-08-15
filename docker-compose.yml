@@ -1,0 +1,44 @@
+version: '3.8'  # можно оставить, но необязательно
+
+volumes:
+  pg_data:
+  static:
+
+services:
+  db:
+    image: postgres:13
+    env_file: .env
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend/
+    env_file: .env
+    volumes:
+      - static:/backend_static
+    depends_on:
+      - db
+
+  frontend:
+    build: ./frontend/
+    env_file: .env
+    volumes:
+      - static:/app/static_out  # смонтируем volume
+    command: >
+      sh -c "
+      npm run build &&
+      cp -r /app/build/. /app/static_out/
+      "
+    # Не нужно держать контейнер живым — он сделает дело и остановится
+
+  gateway:
+    build: ./gateway/
+    env_file: .env
+    volumes:
+      - static:/staticfiles
+    ports:
+      - 8000:80
+    depends_on:
+      - backend
+      - frontend  # ждём, пока frontend скопирует статику
+
