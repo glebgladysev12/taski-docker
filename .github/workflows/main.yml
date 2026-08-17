@@ -7,7 +7,7 @@ on:
 
 jobs:
   tests:
-    name: Run flake8 and Django tests
+    name: Run backend tests (flake8 + Django)
     runs-on: ubuntu-latest
 
     services:
@@ -40,7 +40,7 @@ jobs:
           pip install flake8==7.3.0 flake8-isort==7.0.0
           pip install -r ./backend/requirements.txt
 
-      - name: Test with flake8 and Django tests
+      - name: Run flake8 and Django tests
         env:
           POSTGRES_USER: django_user
           POSTGRES_PASSWORD: <PASSWORD>
@@ -52,13 +52,36 @@ jobs:
           cd backend/
           python manage.py test
 
+  frontend_tests:
+    name: Run frontend tests (npm test)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js 18
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend/
+          npm ci
+
+      - name: Run frontend tests
+        run: |
+          cd frontend/
+          npm run test
+
   build_and_push_to_docker_hub:
-    name: Push Docker image to DockerHub
+    name: Push backend Docker image to DockerHub
     runs-on: ubuntu-latest
     needs: tests
 
     steps:
-      - name: Check out the repo
+      - name: Check out repository
         uses: actions/checkout@v3
 
       - name: Set up Docker Buildx
@@ -70,10 +93,60 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Push to DockerHub
+      - name: Build and push backend image
         uses: docker/build-push-action@v4
         with:
           context: ./backend/
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/taski_backend:latest
+
+  build_frontend_and_push_to_docker_hub:
+    name: Push frontend Docker image to DockerHub
+    runs-on: ubuntu-latest
+    needs: frontend_tests
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./frontend/
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/taski_frontend:latest
+
+  build_gateway_and_push_to_docker_hub:
+    name: Push gateway Docker image to DockerHub
+    runs-on: ubuntu-latest
+    needs: build_frontend_and_push_to_docker_hub  # Можно поставить и без зависимости — зависит от логики
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push gateway (Nginx) image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./gateway/
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/taski_gateway:latest
 
